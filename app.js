@@ -8,21 +8,32 @@ var MongoClient = null;
 var pg = null;
 var updateCoins = null;
 var displayCharacters = null;
+var displayOneCharacter = null;
+var insertCharacter = null;
 if (database === 'mongoDB') {
     MongoClient = require('mongodb').MongoClient;
     updateCoins = updateCoinsMongo;
     displayCharacters = displayCharactersMongo;
+    displayOneCharacter = displayOneCharacterMongo;
+    //insertCharacter = insertCharacterMongo;
 }
 else if (database === 'postgreSQL') {
     pg = require('pg');
     updateCoins = updateCoinsPostgres;
     displayCharacters = displayCharactersPostgres;
+    displayOneCharacter = displayOneCharacterPostgres;
+    //insertCharacter = insertCharacterPostgres;
 }
 else {
     console.error('Unrecognized database ' + database);
     process.exit(1);
 }
 
+var rawTemplate = fs.readFileSync('characters.html', 'utf8');
+var charactersTemplate = handlebars.compile(rawTemplate);
+
+var rawTemplate = fs.readFileSync('oneChar.html', 'utf8');
+var oneCharTemplate = handlebars.compile(rawTemplate);
 
 // Define functions for interacting with the databases
 function sendToMongoDB(res, callback) {
@@ -66,10 +77,35 @@ function displayCharactersMongo(res) {
         var collection = db.collection('characters');
         collection.find({}).toArray(function(err, docs) {
             if(err) {
+                res.writeHead(500, {'Content-Type': 'text/html'});
+                res.end('cannot display characters: database error');
                 return console.error('error running query', err);
             }
             var context = {'characters': docs};
-            var html = template(context);
+            var html = charactersTemplate(context);
+            db.close();
+            res.writeHead(200, {'Content-Type': 'text/html'});
+            res.end(html);
+        });
+    });
+}
+
+function displayOneCharacterMongo(res, name) {
+    sendToMongoDB(res, function(db) {
+        var collection = db.collection('characters');
+        collection.find({name: name}).toArray(function (err, docs) {
+            if (err) {
+                res.writeHead(500, {'Content-Type': 'text/html'});
+                res.end('cannot display characters: database error');
+                return console.error('error running query', err);
+            }
+            if (docs.length != 1) {
+                res.writeHead(500, {'Content-Type': 'text/html'});
+                res.end('Expected 1 result but got ' + docs.length);
+                return console.error('Expected 1 result but got ' + docs.length);
+            }
+            var context = docs[0];
+            var html = oneCharTemplate(context);
             db.close();
             res.writeHead(200, {'Content-Type': 'text/html'});
             res.end(html);
@@ -95,7 +131,7 @@ function updateCoinsPostgres(name, coins, res) {
             'UPDATE characters SET coins=$1 WHERE name=$2',
             [coins, name],
             function(err, result) {
-                if(err) {
+                if (err) {
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('coin update failed: database error');
                     return console.error('error running query', err);
@@ -110,11 +146,13 @@ function updateCoinsPostgres(name, coins, res) {
 function displayCharactersPostgres(res) {
     sendToPostgresDB(res, function(client) {
         client.query('SELECT * FROM characters', function(err, result) {
-            if(err) {
+            if (err) {
+                res.writeHead(500, {'Content-Type': 'text/html'});
+                res.end('database error');
                 return console.error('error running query', err);
             }
             var context = {'characters': result.rows};
-            var html = template(context);
+            var html = charactersTemplate(context);
             client.end();
             res.writeHead(200, {'Content-Type': 'text/html'});
             res.end(html);
@@ -122,10 +160,36 @@ function displayCharactersPostgres(res) {
     });
 }
 
+function displayOneCharacterPostgres(res, name) {
+    sendToPostgresDB(res, function (client) {
+        client.query(
+            'SELECT * FROM characters WHERE name=$1',
+            [name],
+            function(err, result) {
+                if (err) {
+                    res.writeHead(500, {'Content-Type': 'text/html'});
+                    res.end('database error');
+                    return console.error('error running query', err);
+                }
+                if (result.rows.length != 1) {
+                    res.writeHead(500, {'Content-Type': 'text/html'});
+                    res.end('Expected 1 result but got ' + rows.length);
+                    return console.error('Expected 1 result but got ' + rows.length);
+                }
+                var context = result.rows[0];
+                var html = oneCharTemplate(context);
+                client.end();
+                res.writeHead(200, {'Content-Type': 'text/html'});
+                res.end(html);
+            }
+        );
+    });
+}
 
-
-var rawTemplate = fs.readFileSync('app.html', 'utf8');
-var template = handlebars.compile(rawTemplate);
+handlebars.registerHelper('replaceSpaces', function(name) {
+    var newName = name.replace(/ /g, '_');
+    return new handlebars.SafeString(newName);
+});
 
 var server = http.createServer(function (req, res) {
     // first handle the CSS and JavaScript files
@@ -162,6 +226,10 @@ var server = http.createServer(function (req, res) {
                 updateCoins(name, coins, res);
             });
         }
+    }
+    else if (req.url.startsWith('/show')) {
+        var name = req.url.substring(5, req.url.length).replace(/_/g, ' ');
+        displayOneCharacter(res, name);
     }
     else {
         // for any other URLs, just display all characters currently in the database
