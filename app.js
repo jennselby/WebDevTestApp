@@ -231,6 +231,10 @@ var server = http.createServer(function (req, res) {
         var name = req.url.substring(5, req.url.length).replace(/_/g, ' ');
         displayOneCharacter(res, name);
     }
+    else if (req.url.startsWith("/addNewCharacter")) {
+        res.writeHead(200, {'Content-Type': 'text/html'});
+        res.end('In the future, I will add a new character.');
+    }
     else {
         // for any other URLs, just display all characters currently in the database
         displayCharacters(res);
