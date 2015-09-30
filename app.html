@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        .name {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-left: 2em;
+            margin-top: 1em;
+        }
+        .info {
+            font-size: 12pt;
+            font-weight: normal;
+            margin-left: 4em;
+        }
+        ul {
+            margin-top: 0;
+            margin-bottom: 0;
+            margin-right: 0;
+            margin-left: 2em;
+            padding: 0;
+        }
+        li {
+            display: inline;
+            margin-left: 1em;
+        }
+    </style>
+</head>
+
+<body>
+    {{#each characters}}
+        <div>
+            <div class="name">{{ name }}</div>
+            {{#if location }}
+                <div class="info">{{location.street_address}}, {{location.kingdom}} Kingdom</div>
+            {{/if}}
+            {{#if street_address}}
+                <div class="info">{{street_address}}, {{kingdom}} Kingdom</div>
+            {{/if}}
+            <div class="info">{{coins}} Coins</div>
+            <div class="info">{{lives}} Lives</div>
+            {{#if friends }}
+                <div class="info">
+                    Friends:
+                    <ul>
+                        {{#each friends}}
+                            <li>{{this}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+            {{/if}}
+        </div>
+    {{/each}}
+</body>
+
+</html>

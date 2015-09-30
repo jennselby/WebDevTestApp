@@ -1,0 +1,11 @@
+{
+    "name": "WebDevTestApp",
+    "version": "v0.1.0",
+    "license": "MIT",
+    "files": ["app.js", "static", "templates"],
+    "dependencies": {
+        "handlebars": "*",
+        "mongodb": "*",
+        "pg": "*"
+    }
+}
