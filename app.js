@@ -29,10 +29,10 @@ else {
     process.exit(1);
 }
 
-var rawTemplate = fs.readFileSync('characters.html', 'utf8');
+var rawTemplate = fs.readFileSync('templates/characters.html', 'utf8');
 var charactersTemplate = handlebars.compile(rawTemplate);
 
-var rawTemplate = fs.readFileSync('oneChar.html', 'utf8');
+var rawTemplate = fs.readFileSync('templates/oneChar.html', 'utf8');
 var oneCharTemplate = handlebars.compile(rawTemplate);
 
 // Define functions for interacting with the databases
