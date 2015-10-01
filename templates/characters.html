@@ -40,14 +40,18 @@
     </div>
     <div class="content">
         <div class="title">Add New Character</div>
-        <form action="addNewCharacter">
+        <form action="addNewCharacter" method="POST">
             <div>
                 <label for="charName">Name:</label>
                 <input id="charName" name="charName" type="text">
             </div>
             <div>
-                <label for="address">Address:</label>
-                <input id="address" name="address" type="text">
+                <label for="street_address">Street Address:</label>
+                <input id="street_address" name="street_address" type="text">
+            </div>
+            <div>
+                <label for="kingdom">Kingdom:</label>
+                <input id="kingdom" name="kingdom" type="text">
             </div>
             <div>
                 <input type="submit" value="Add Character">

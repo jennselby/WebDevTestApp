@@ -1,10 +1,12 @@
 var http = require('http');
 var fs = require('fs');
 var handlebars = require('handlebars');
+var qs = require('querystring');
 
 // setup the database functions based on which database is being used
 var database = 'mongoDB'; // change to postgreSQL to use postgres instead
 var MongoClient = null;
+var sanitize = null;
 var pg = null;
 var updateCoins = null;
 var displayCharacters = null;
@@ -12,17 +14,18 @@ var displayOneCharacter = null;
 var insertCharacter = null;
 if (database === 'mongoDB') {
     MongoClient = require('mongodb').MongoClient;
+    sanitize = require('mongo-sanitize');
     updateCoins = updateCoinsMongo;
     displayCharacters = displayCharactersMongo;
     displayOneCharacter = displayOneCharacterMongo;
-    //insertCharacter = insertCharacterMongo;
+    insertCharacter = insertCharacterMongo;
 }
 else if (database === 'postgreSQL') {
     pg = require('pg');
     updateCoins = updateCoinsPostgres;
     displayCharacters = displayCharactersPostgres;
     displayOneCharacter = displayOneCharacterPostgres;
-    //insertCharacter = insertCharacterPostgres;
+    insertCharacter = insertCharacterPostgres;
 }
 else {
     console.error('Unrecognized database ' + database);
@@ -47,7 +50,7 @@ function sendToMongoDB(res, callback) {
     });
 }
 
-function updateCoinsMongo(name, coins, res) {
+function updateCoinsMongo(res, name, coins) {
     sendToMongoDB(res, function(db) {
         var collection = db.collection('characters');
         collection.update(
@@ -113,6 +116,25 @@ function displayOneCharacterMongo(res, name) {
     });
 }
 
+function insertCharacterMongo(res, name, street_address, kingdom) {
+    sendToMongoDB(res, function (db) {
+        var collection = db.collection('characters');
+        collection.insert({
+             _id: sanitize(name),
+             name: sanitize(name),
+             location: { street_address: sanitize(street_address), kingdom: sanitize(kingdom) },
+             coins: 0,
+             lives: 0,
+             friends: [],
+             enemies: [],
+        });
+        db.close();
+        // dislay the characters page
+        res.writeHead(301, {Location: '/'});
+        res.end();
+    });
+}
+
 function sendToPostgresDB(res, callback) {
     pg.connect('postgres://localhost/mario_example', function(err, client) {
         if(err) {
@@ -124,7 +146,7 @@ function sendToPostgresDB(res, callback) {
     }); 
 }
 
-function updateCoinsPostgres(name, coins, res) {
+function updateCoinsPostgres(res, name, coins) {
     sendToPostgresDB(res, function(client) {
         // https://github.com/brianc/node-postgres/wiki/Example
         client.query(
@@ -186,6 +208,45 @@ function displayOneCharacterPostgres(res, name) {
     });
 }
 
+function insertCharacterPostgres(res, name, street_address, kingdom) {
+    sendToPostgresDB(res, function (client) {
+        client.query(
+            'INSERT INTO characters (name, street_address, kingdom, coins, lives) VALUES ($1, $2, $3, 0, 0)',
+            [name, street_address, kingdom],
+            function (err, result) {
+                if (err) {
+                    res.writeHead(500, {'Content-Type': 'text/html'});
+                    res.end('database error');
+                    return console.error('error running query', err);
+                }
+                // dislay the characters page
+                res.writeHead(301, {Location: '/'});
+                res.end();
+            }
+        );
+    });
+}
+
+function handlePostData(req, res, callback) {
+    var body = '';
+    // http://stackoverflow.com/questions/4295782/how-do-you-extract-post-data-in-node-js
+    // collect all of the POST data
+    req.on('data', function (data) {
+        body += data;
+        // Too much POST data, kill the connection!
+        if (body.length > 1e6) {
+            request.connection.destroy();
+            res.writeHead(413, {'Content-Type': 'text/html'});
+            res.end('coin update failed: POST data too large');
+            return console.error('POST data too large');
+        }
+    });
+    // when the data collection is done, update the database with the new information
+    req.on('end', function () {
+        callback(res, body);
+    });
+}
+
 handlebars.registerHelper('replaceSpaces', function(name) {
     var newName = name.replace(/ /g, '_');
     return new handlebars.SafeString(newName);
@@ -201,39 +262,28 @@ var server = http.createServer(function (req, res) {
         res.writeHead(200, {'Content-Type': 'text/javascript'});
         res.end(fs.readFileSync('static/appUtils.js', 'utf8'));
     }
-    else if (req.url === '/setcoin') {
-        // this should contain the new coin data, so ignore a request to this URL that isn't a POST
-        if (req.method == 'POST') {
-            var body = '';
-            // http://stackoverflow.com/questions/4295782/how-do-you-extract-post-data-in-node-js
-            // collect all of the POST data
-            req.on('data', function (data) {
-                body += data;
-                // Too much POST data, kill the connection!
-                if (body.length > 1e6) {
-                    request.connection.destroy();
-                    res.writeHead(413, {'Content-Type': 'text/html'});
-                    res.end('coin update failed: POST data too large');
-                    return console.error('POST data too large');
-                }
-            });
-            // when the data collection is done, update the database with the new information
-            req.on('end', function () {
-                var post = JSON.parse(body);
-                var coins = post['coins'];
-                var name = post['name'];
-
-                updateCoins(name, coins, res);
-            });
-        }
+    // this should contain the new coin data, so ignore a request to this URL that isn't a POST
+    else if (req.url === '/setcoin'  && req.method === 'POST') {
+        handlePostData(req, res, function (res, body) {
+            var post = JSON.parse(body);
+            var name = post['name'];
+            var coins = post['coins'];
+            updateCoins(res, name, coins);
+        });
     }
     else if (req.url.startsWith('/show')) {
         var name = req.url.substring(5, req.url.length).replace(/_/g, ' ');
         displayOneCharacter(res, name);
     }
-    else if (req.url.startsWith("/addNewCharacter")) {
-        res.writeHead(200, {'Content-Type': 'text/html'});
-        res.end('In the future, I will add a new character.');
+    // this should contain the new coin data, so ignore a request to this URL that isn't a POST
+    else if (req.url.startsWith("/addNewCharacter") && req.method === 'POST') {
+        handlePostData(req, res, function (res, body) {
+            var post = qs.parse(body);
+            var name = post['charName'];
+            var street_address = post['street_address'];
+            var kingdom = post['kingdom'];
+            insertCharacter(res, name, street_address, kingdom);
+        });
     }
     else {
         // for any other URLs, just display all characters currently in the database
