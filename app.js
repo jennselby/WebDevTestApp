@@ -42,6 +42,7 @@ var oneCharTemplate = handlebars.compile(rawTemplate);
 function sendToMongoDB(res, callback) {
     MongoClient.connect('mongodb://localhost/test', function(err, db) {
         if(err) {
+            db.close();
             res.writeHead(500, {'Content-Type': 'text/html'});
             res.end('coin update failed: database connection error');
             return console.error('could not connect to mongo', err);
@@ -57,17 +58,20 @@ function updateCoinsMongo(res, name, coins) {
             {name: name},
             {$set: {coins: coins}},
             function(err, statusObj) {
-                if(err) {
+                if (err) {
+                    db.close();
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('coin update failed: database error');
                     return console.error('error running query', err);
                 }
                 if (statusObj.result.nModified != 1) {
+                    db.close();
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('coin update failed: ' + statusObj.result.nModified + ' documents updated');
                     return console.error('Expected 1 document updated, but ' +
                                            statusObj.result.nModified + ' were: ' + statusObj);
                 }
+                db.close();
                 res.writeHead(200, {'Content-Type': 'text/html'});
                 res.end('coin update received');
             }
@@ -79,7 +83,8 @@ function displayCharactersMongo(res) {
     sendToMongoDB(res, function (db) {
         var collection = db.collection('characters');
         collection.find({}).toArray(function(err, docs) {
-            if(err) {
+            if (err) {
+                db.close();
                 res.writeHead(500, {'Content-Type': 'text/html'});
                 res.end('cannot display characters: database error');
                 return console.error('error running query', err);
@@ -98,11 +103,13 @@ function displayOneCharacterMongo(res, name) {
         var collection = db.collection('characters');
         collection.find({name: name}).toArray(function (err, docs) {
             if (err) {
+                db.close();
                 res.writeHead(500, {'Content-Type': 'text/html'});
                 res.end('cannot display characters: database error');
                 return console.error('error running query', err);
             }
             if (docs.length != 1) {
+                db.close();
                 res.writeHead(500, {'Content-Type': 'text/html'});
                 res.end('Expected 1 result but got ' + docs.length);
                 return console.error('Expected 1 result but got ' + docs.length);
@@ -137,7 +144,8 @@ function insertCharacterMongo(res, name, street_address, kingdom) {
 
 function sendToPostgresDB(res, callback) {
     pg.connect('postgres://localhost/mario_example', function(err, client) {
-        if(err) {
+        if (err) {
+            client.end();
             res.writeHead(500, {'Content-Type': 'text/html'});
             res.end('coin update failed: database connection error');
             return console.error('could not connect to postgres', err);
@@ -154,10 +162,12 @@ function updateCoinsPostgres(res, name, coins) {
             [coins, name],
             function(err, result) {
                 if (err) {
+                    client.end();
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('coin update failed: database error');
                     return console.error('error running query', err);
                 }
+                client.end();
                 res.writeHead(200, {'Content-Type': 'text/html'});
                 res.end('coin update received');
             }
@@ -169,6 +179,7 @@ function displayCharactersPostgres(res) {
     sendToPostgresDB(res, function(client) {
         client.query('SELECT * FROM characters', function(err, result) {
             if (err) {
+                client.end();
                 res.writeHead(500, {'Content-Type': 'text/html'});
                 res.end('database error');
                 return console.error('error running query', err);
@@ -189,6 +200,7 @@ function displayOneCharacterPostgres(res, name) {
             [name],
             function(err, result) {
                 if (err) {
+                    client.end();
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('database error');
                     return console.error('error running query', err);
@@ -215,10 +227,12 @@ function insertCharacterPostgres(res, name, street_address, kingdom) {
             [name, street_address, kingdom],
             function (err, result) {
                 if (err) {
+                    client.end();
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('database error');
                     return console.error('error running query', err);
                 }
+                client.end();
                 // dislay the characters page
                 res.writeHead(301, {Location: '/'});
                 res.end();
