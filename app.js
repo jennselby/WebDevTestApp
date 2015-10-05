@@ -276,7 +276,7 @@ var server = http.createServer(function (req, res) {
         displayOneCharacter(res, name);
     }
     // this should contain the new coin data, so ignore a request to this URL that isn't a POST
-    else if (req.url.startsWith("/addNewCharacter") && req.method === 'POST') {
+    else if (req.url.startsWith('/addNewCharacter') && req.method === 'POST') {
         handlePostData(req, res, function (res, body) {
             var post = qs.parse(body);
             var name = post['charName'];
