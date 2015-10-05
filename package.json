@@ -7,6 +7,7 @@
         "handlebars": "*",
         "mongodb": "*",
         "mongo-sanitize": "*",
+        "mysql": "*",
         "pg": "*"
     }
 }

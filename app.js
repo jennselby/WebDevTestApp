@@ -4,10 +4,14 @@ var handlebars = require('handlebars');
 var qs = require('querystring');
 
 // setup the database functions based on which database is being used
-var database = 'mongoDB'; // change to postgreSQL to use postgres instead
+var database = 'mongoDB'; // change to postgreSQL or MySQL to use these databases instead
 var MongoClient = null;
 var sanitize = null;
 var pg = null;
+var mysql = null;
+var sendToSQLDB = null;
+var extractSQLResults = null;
+var replaceSQLParameters = null;
 var updateCoins = null;
 var displayCharacters = null;
 var displayOneCharacter = null;
@@ -22,10 +26,23 @@ if (database === 'mongoDB') {
 }
 else if (database === 'postgreSQL') {
     pg = require('pg');
-    updateCoins = updateCoinsPostgres;
-    displayCharacters = displayCharactersPostgres;
-    displayOneCharacter = displayOneCharacterPostgres;
-    insertCharacter = insertCharacterPostgres;
+    extractSQLResults = extractPostgresResults;
+    replaceSQLParameters = replacePostgresParameters;
+    sendToSQLDB = sendToPostgresDB;
+    updateCoins = updateCoinsSQL;
+    displayCharacters = displayCharactersSQL;
+    displayOneCharacter = displayOneCharacterSQL;
+    insertCharacter = insertCharacterSQL;
+}
+else if (database === 'MySQL') {
+    mysql = require('mysql');
+    extractSQLResults = extractMySQLResults;
+    replaceSQLParameters = replaceMySQLParameters;
+    sendToSQLDB = sendToMySQLDB;
+    updateCoins = updateCoinsSQL;
+    displayCharacters = displayCharactersSQL;
+    displayOneCharacter = displayOneCharacterSQL;
+    insertCharacter = insertCharacterSQL;
 }
 else {
     console.error('Unrecognized database ' + database);
@@ -142,6 +159,14 @@ function insertCharacterMongo(res, name, street_address, kingdom) {
     });
 }
 
+function extractPostgresResults(result) {
+    return result.rows;
+}
+
+function replacePostgresParameters(query) {
+    return query;
+}
+
 function sendToPostgresDB(res, callback) {
     pg.connect('postgres://localhost/mario_example', function(err, client) {
         if (err) {
@@ -154,11 +179,30 @@ function sendToPostgresDB(res, callback) {
     }); 
 }
 
-function updateCoinsPostgres(res, name, coins) {
-    sendToPostgresDB(res, function(client) {
+function extractMySQLResults(result) {
+    return result;
+}
+
+function replaceMySQLParameters(query) {
+    // MySQL node library uses ? instead of $N for parameters
+    return query.replace(new RegExp('\\$[0-9]', 'g'), '?');
+}
+
+function sendToMySQLDB(res, callback) {
+    var connection = mysql.createConnection({
+        host     : 'localhost',
+        user     : 'root',
+        database : 'mario_example'
+    });
+    connection.connect();
+    callback(connection);
+}
+
+function updateCoinsSQL(res, name, coins) {
+    sendToSQLDB(res, function(client) {
         // https://github.com/brianc/node-postgres/wiki/Example
         client.query(
-            'UPDATE characters SET coins=$1 WHERE name=$2',
+            replaceSQLParameters('UPDATE characters SET coins=$1 WHERE name=$2'),
             [coins, name],
             function(err, result) {
                 if (err) {
@@ -175,8 +219,8 @@ function updateCoinsPostgres(res, name, coins) {
     });
 }
 
-function displayCharactersPostgres(res) {
-    sendToPostgresDB(res, function(client) {
+function displayCharactersSQL(res) {
+    sendToSQLDB(res, function(client) {
         client.query('SELECT * FROM characters', function(err, result) {
             if (err) {
                 client.end();
@@ -184,19 +228,19 @@ function displayCharactersPostgres(res) {
                 res.end('database error');
                 return console.error('error running query', err);
             }
-            var context = {'characters': result.rows};
-            var html = charactersTemplate(context);
             client.end();
+            var context = {'characters': extractSQLResults(result)};
+            var html = charactersTemplate(context);
             res.writeHead(200, {'Content-Type': 'text/html'});
             res.end(html);
         });
     });
 }
 
-function displayOneCharacterPostgres(res, name) {
-    sendToPostgresDB(res, function (client) {
+function displayOneCharacterSQL(res, name) {
+    sendToSQLDB(res, function (client) {
         client.query(
-            'SELECT * FROM characters WHERE name=$1',
+            replaceSQLParameters('SELECT * FROM characters WHERE name=$1'),
             [name],
             function(err, result) {
                 if (err) {
@@ -205,14 +249,16 @@ function displayOneCharacterPostgres(res, name) {
                     res.end('database error');
                     return console.error('error running query', err);
                 }
-                if (result.rows.length != 1) {
+                var rows = extractSQLResults(result);
+                if (rows.length != 1) {
+                    client.end();
                     res.writeHead(500, {'Content-Type': 'text/html'});
                     res.end('Expected 1 result but got ' + rows.length);
                     return console.error('Expected 1 result but got ' + rows.length);
                 }
-                var context = result.rows[0];
-                var html = oneCharTemplate(context);
                 client.end();
+                var context = rows[0];
+                var html = oneCharTemplate(context);
                 res.writeHead(200, {'Content-Type': 'text/html'});
                 res.end(html);
             }
@@ -220,10 +266,11 @@ function displayOneCharacterPostgres(res, name) {
     });
 }
 
-function insertCharacterPostgres(res, name, street_address, kingdom) {
-    sendToPostgresDB(res, function (client) {
+function insertCharacterSQL(res, name, street_address, kingdom) {
+    sendToSQLDB(res, function (client) {
         client.query(
-            'INSERT INTO characters (name, street_address, kingdom, coins, lives) VALUES ($1, $2, $3, 0, 0)',
+            replaceSQLParameters(
+                'INSERT INTO characters (name, street_address, kingdom, coins, lives) VALUES ($1, $2, $3, 0, 0)'),
             [name, street_address, kingdom],
             function (err, result) {
                 if (err) {
